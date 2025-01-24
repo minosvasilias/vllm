@@ -147,6 +147,7 @@ class Attention(nn.Module):
         value: torch.Tensor,
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
+        instance_id: str = "default",
     ) -> torch.Tensor:
         if self.calculate_kv_scales and \
             attn_metadata.enable_kv_scales_calculation:
@@ -165,17 +166,18 @@ class Attention(nn.Module):
                 value = value.view(-1, self.num_kv_heads, self.head_size)
             if self.use_direct_call:
                 unified_attention_with_output(query, key, value, output,
-                                              self.layer_name)
+                                              self.layer_name, instance_id)
             else:
                 torch.ops.vllm.unified_attention_with_output(
-                    query, key, value, output, self.layer_name)
+                    query, key, value, output, self.layer_name, instance_id)
             return output.view(-1, hidden_size)
         else:
             if self.use_direct_call:
-                return unified_attention(query, key, value, self.layer_name)
+                return unified_attention(query, key, value, self.layer_name,
+                                         instance_id)
             else:
                 return torch.ops.vllm.unified_attention(
-                    query, key, value, self.layer_name)
+                    query, key, value, self.layer_name, instance_id)
 
     def calc_kv_scales(self, key, value):
         self._k_scale.copy_(torch.abs(key).max() / self.k_range)
@@ -271,8 +273,9 @@ def unified_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     layer_name: str,
+    instance_id: str = "default",
 ) -> torch.Tensor:
-    forward_context: ForwardContext = get_forward_context()
+    forward_context: ForwardContext = get_forward_context(instance_id)
     attn_metadata = forward_context.attn_metadata
     self = forward_context.attn_layers[layer_name]
     kv_cache = self.kv_cache[forward_context.virtual_engine]
@@ -284,6 +287,7 @@ def unified_attention_fake(
     key: torch.Tensor,
     value: torch.Tensor,
     layer_name: str,
+    instance_id: str = "default",
 ) -> torch.Tensor:
     return torch.empty_like(query).contiguous()
 
@@ -303,8 +307,9 @@ def unified_attention_with_output(
     value: torch.Tensor,
     output: torch.Tensor,
     layer_name: str,
+    instance_id: str = "default",
 ) -> None:
-    forward_context: ForwardContext = get_forward_context()
+    forward_context: ForwardContext = get_forward_context(instance_id)
     attn_metadata = forward_context.attn_metadata
     self = forward_context.attn_layers[layer_name]
     kv_cache = self.kv_cache[forward_context.virtual_engine]
@@ -323,6 +328,7 @@ def unified_attention_with_output_fake(
     value: torch.Tensor,
     output: torch.Tensor,
     layer_name: str,
+    instance_id: str = "default",
 ) -> None:
     return
 
