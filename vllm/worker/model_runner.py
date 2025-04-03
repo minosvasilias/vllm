@@ -1518,7 +1518,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                     graph_runner = CUDAGraphRunner(
                         self.model, self.attn_backend.get_name(),
                         self.attn_state.graph_clone(batch_size),
-                        self.model_config.is_encoder_decoder)
+                        self.model_config.is_encoder_decoder,
+                        self.vllm_config)
 
                     capture_inputs = {
                         "input_ids":
@@ -1745,8 +1746,6 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     intermediate_tensors=intermediate_tensors,
                     **MultiModalKwargs.as_kwargs(multi_modal_kwargs,
                                                  device=self.device),
-                    instance_id=model_input.instance_id if hasattr(
-                        model_input, "instance_id") else None,
                     **seqlen_agnostic_kwargs,
                     **model_kwargs,
                 )
@@ -1891,11 +1890,13 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
 class CUDAGraphRunner(nn.Module):
 
     def __init__(self, model: nn.Module, backend_name: str,
-                 attn_state: AttentionState, is_encoder_decoder_model: bool):
+                 attn_state: AttentionState, is_encoder_decoder_model: bool,
+                    vllm_config):
         super().__init__()
         self.model = model
         self.backend_name = backend_name
         self.attn_state = attn_state
+        self.vllm_config = vllm_config
 
         self.input_buffers: Dict[str, torch.Tensor] = {}
         self.output_buffers: Dict[str, torch.Tensor] = {}
@@ -1991,7 +1992,7 @@ class CUDAGraphRunner(nn.Module):
         instance_id: Optional[str] = None,
         **kwargs,
     ) -> torch.Tensor:
-        attn_metadata: AttentionMetadata = get_forward_context(instance_id).attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context(self.vllm_config.instance_id).attn_metadata
 
         # Copy the input tensors to the input buffers.
         self.input_buffers["input_ids"].copy_(input_ids, non_blocking=True)
