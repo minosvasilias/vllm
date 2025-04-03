@@ -492,7 +492,7 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                                  "requires setting cross-attention "
                                  "metadata attributes.")
 
-        query = query.view(-1, self.num_heads, self.head_size)
+        query = query.reshape(-1, self.num_heads, self.head_size)
         if key is not None:
             assert value is not None
             key = key.view(-1, self.num_kv_heads, self.head_size)

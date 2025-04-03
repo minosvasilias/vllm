@@ -42,16 +42,14 @@ class ForwardContext:
     dp_metadata: Optional[DPMetadata] = None
 
 
-_forward_context: Optional[ForwardContext] = None
+_forward_contexts: Dict[int, ForwardContext] = {}
 
-
-def get_forward_context() -> ForwardContext:
+def get_forward_context(instance_id: str = "default") -> ForwardContext:
     """Get the current forward context."""
-    assert _forward_context is not None, (
-        "Forward context is not set. "
+    assert instance_id in _forward_contexts and _forward_contexts.get(instance_id) is not None, (
+        f"Forward context is not set for instance_id {instance_id}. "
         "Please use `set_forward_context` to set the forward context.")
-    return _forward_context
-
+    return _forward_contexts.get(instance_id)
 
 @contextmanager
 def set_forward_context(attn_metadata: Any,
@@ -63,6 +61,7 @@ def set_forward_context(attn_metadata: Any,
     Here we can inject common logic for every model forward pass.
     """
     global forward_start_time
+    global _forward_contexts
     need_to_track_batchsize = track_batchsize and attn_metadata is not None
     if need_to_track_batchsize:
         forward_start_time = time.perf_counter()
@@ -90,9 +89,9 @@ def set_forward_context(attn_metadata: Any,
         cu_tokens_across_dp_cpu = torch.cumsum(num_tokens_tensor, dim=0)
         dp_metadata = DPMetadata(cu_tokens_across_dp_cpu)
 
-    global _forward_context
-    prev_context = _forward_context
-    _forward_context = ForwardContext(
+    global _forward_contexts
+    prev_context = _forward_contexts.get(vllm_config.instance_id)
+    _forward_contexts[vllm_config.instance_id] = ForwardContext(
         no_compile_layers=vllm_config.compilation_config.
         static_forward_context,
         virtual_engine=virtual_engine,
@@ -133,4 +132,4 @@ def set_forward_context(attn_metadata: Any,
                     logger.info(("Batchsize forward time stats "
                                  "(batchsize, count, median_time(ms)): %s"),
                                 forward_stats)
-        _forward_context = prev_context
+        _forward_contexts[vllm_config.instance_id] = prev_context
