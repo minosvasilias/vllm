@@ -3337,8 +3337,8 @@ class VllmConfig:
 
         # summarize vllm config
         vllm_factors: list[Any] = []
-        from vllm import __version__
-        vllm_factors.append(__version__)
+        #from vllm import __version__
+        vllm_factors.append("0.8.2")
         vllm_factors.append(envs.VLLM_USE_V1)
         if self.model_config:
             vllm_factors.append(self.model_config.compute_hash())
