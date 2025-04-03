@@ -197,11 +197,12 @@ class LlamaAttention(nn.Module):
         self,
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
+        instance_id: str = None,
     ) -> torch.Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v)
+        attn_output = self.attn(q, k, v, instance_id=instance_id)
         output, _ = self.o_proj(attn_output)
         return output
 
@@ -267,6 +268,7 @@ class LlamaDecoderLayer(nn.Module):
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
         residual: Optional[torch.Tensor],
+        instance_id: str = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Self Attention
         if residual is None:
@@ -276,7 +278,8 @@ class LlamaDecoderLayer(nn.Module):
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
         hidden_states = self.self_attn(positions=positions,
-                                       hidden_states=hidden_states)
+                                       hidden_states=hidden_states,
+                                       instance_id=instance_id)
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(
@@ -302,6 +305,7 @@ class LlamaModel(nn.Module):
 
         self.config = config
         self.quant_config = quant_config
+        self.instance_id = vllm_config.instance_id
         lora_vocab = (lora_config.lora_extra_vocab_size *
                       (lora_config.max_loras or 1)) if lora_config else 0
         self.vocab_size = config.vocab_size + lora_vocab
@@ -321,7 +325,7 @@ class LlamaModel(nn.Module):
             lambda prefix: layer_type(config=config,
                                       cache_config=cache_config,
                                       quant_config=quant_config,
-                                      prefix=prefix),
+                                      prefix=prefix),  
             prefix=f"{prefix}.layers",
         )
         if get_pp_group().is_last_rank:
@@ -355,7 +359,7 @@ class LlamaModel(nn.Module):
             residual = intermediate_tensors["residual"]
 
         for layer in self.layers[self.start_layer:self.end_layer]:
-            hidden_states, residual = layer(positions, hidden_states, residual)
+            hidden_states, residual = layer(positions, hidden_states, residual, instance_id = self.instance_id)
 
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
