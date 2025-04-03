@@ -1773,6 +1773,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     intermediate_tensors=intermediate_tensors,
                     **MultiModalKwargs.as_kwargs(multi_modal_kwargs,
                                                  device=self.device),
+                    instance_id=model_input.instance_id if hasattr(
+                        model_input, "instance_id") else None,
                     **seqlen_agnostic_kwargs,
                     **model_kwargs,
                 )
@@ -2014,9 +2016,10 @@ class CUDAGraphRunner(nn.Module):
         input_ids: torch.Tensor,
         positions: torch.Tensor,
         intermediate_tensors: Optional[IntermediateTensors],
+        instance_id: Optional[str] = None,
         **kwargs,
     ) -> torch.Tensor:
-        attn_metadata: AttentionMetadata = get_forward_context().attn_metadata
+        attn_metadata: AttentionMetadata = get_forward_context(instance_id).attn_metadata
 
         # Copy the input tensors to the input buffers.
         self.input_buffers["input_ids"].copy_(input_ids, non_blocking=True)
