@@ -3022,8 +3022,8 @@ class VllmConfig:
 
         # summarize vllm config
         vllm_factors: List[Any] = []
-        from vllm import __version__
-        vllm_factors.append(__version__)
+        #from vllm import __version__
+        vllm_factors.append("0.7.0")
         if self.model_config:
             vllm_factors.append(self.model_config.compute_hash())
         else:
