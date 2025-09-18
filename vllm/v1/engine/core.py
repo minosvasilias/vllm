@@ -871,13 +871,32 @@ class EngineCoreProc(EngineCore):
 
             ready_event.set()
             del ready_event
+
             while True:
-                for input_socket, _ in poller.poll():
+                for sock, _ in poller.poll():
+                    frames = sock.recv_multipart(copy=False)
+
+                    # Coordinator control channel may emit plain ASCII control words
+                    # (e.g., b"READY"/b"PAUSE"/b"RUNNING"). Those are not enum frames.
+                    if coord_socket is not None and sock is coord_socket:
+                        if len(frames) == 1:
+                            first = bytes(frames[0].buffer)
+                            if first in (b"READY", b"PAUSE", b"RUNNING", b"\x01", b"\x00"):
+                                logger.debug("Ignoring coordinator control msg: %s", first)
+                                continue  # do not enqueue these to the core loop
+                        # Otherwise, treat as a normal (enum-tagged) request below.
+
                     # (RequestType, RequestData)
-                    type_frame, *data_frames = input_socket.recv_multipart(
-                        copy=False)
-                    request_type = EngineCoreRequestType(
-                        bytes(type_frame.buffer))
+                    type_frame, *data_frames = frames
+                    try:
+                        request_type = EngineCoreRequestType(bytes(type_frame.buffer))
+                    except ValueError:
+                        # Be defensive: if a stray single-frame control msg slipped through, drop it quietly.
+                        raw = bytes(type_frame.buffer)
+                        if raw in (b"READY", b"PAUSE", b"RUNNING", b"\x01", b"\x00"):
+                            logger.debug("Dropped unexpected coordinator control msg: %s", raw)
+                            continue
+                        raise
 
                     # Deserialize the request data.
                     if request_type == EngineCoreRequestType.ADD:
